@@ -53,19 +53,6 @@
   }, 2100);
 </script>
 
-    <script>
-      // 在页面渲染前就执行主题初始化
-      try {
-        const storageKey = "vite-ui-theme"
-        let theme = localStorage.getItem(storageKey)
-        if (theme === "system" || !theme) {
-          theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-        }
-        document.documentElement.classList.add(theme)
-      } catch (e) {
-        document.documentElement.classList.add("light")
-      }
-    </script>
         <!-- waifu-tips.js 依赖 JQuery 库 -->
     <script src="https://static.mikus.ink/live2d/jquery.min.js"></script>
     <!-- 使用 aotuload.js 引入看板娘 -->
@@ -196,183 +183,140 @@
       // 移除GPU卡片
       ;(function () {
         "use strict"
-
-        const containerSelector =
-          "#root > div > main > div.mx-auto.w-full.max-w-5xl.px-0.flex.flex-col.gap-4.server-info > div:nth-child(3) > section > div:nth-child(2)"
-        const pRelativeSelector = "div > section > div.flex.items-center.justify-between > section.flex.flex-col.items-center.gap-2 > p"
-        
         const TAG = "[remove-gpu-if-present]"
+        let removed = false
 
-        function processOne(container) {
+        function findAndRemoveGPU() {
+          if (removed) return true
           try {
-            if (!container) return false
-            const p = container.querySelector(pRelativeSelector) || container.querySelector("p")
-            if (!p) {
-              return false
-            }
-            const text = (p.textContent || "").trim()
-            //console.info(TAG, "找到 <p> 文本：", text)
-            if (/gpu/i.test(text)) {
-              console.info(TAG, '匹配到 "GPU"，将删除容器：', container)
-              container.remove()
-              return true
+            const allSections = document.querySelectorAll('section')
+            for (const section of allSections) {
+              const pElements = section.querySelectorAll('p')
+              for (const p of pElements) {
+                const text = (p.textContent || "").trim()
+                if (/^gpu$/i.test(text)) {
+                  const container = section.closest('div[class*="flex"]') || section.parentElement
+                  if (container && container !== document.body) {
+                    console.info(TAG, '匹配到 "GPU"，将删除容器：', container)
+                    container.remove()
+                    removed = true
+                    return true
+                  }
+                }
+              }
             }
             return false
-          } catch (err) {
-            //console.error(TAG, "处理容器时出错：", err)
-            return false
-          }
-        }
-
-        function findAndProcess() {
-          try {
-            const container = document.querySelector(containerSelector)
-            if (!container) {
-              // not found
-              return false
-            }
-            return processOne(container)
           } catch (err) {
             return false
           }
         }
 
-        // 1) 尝试一次性查找（页面可能已加载）
-        findAndProcess()
+        findAndRemoveGPU()
 
-        // 2) 使用 MutationObserver 监视 body 的变化（在单页应用中非常有用）
-        const mo = new MutationObserver((mutations) => {
-          // 尽量快速返回以降低开销
-          if (findAndProcess()) {
-            // 删除成功后可以选择断开 observer（如果只想处理一次）
-            // mo.disconnect();
+        const mo = new MutationObserver(() => {
+          if (findAndRemoveGPU()) {
+            mo.disconnect()
           }
         })
         mo.observe(document.body, { childList: true, subtree: true })
 
-        // 3) 监听单页应用的路由变化（覆盖 pushState/replaceState 并监听 popstate）
-        ;(function hijackHistoryEvents() {
-          try {
-            const originalPush = history.pushState
-            const originalReplace = history.replaceState
-            history.pushState = function () {
-              const ret = originalPush.apply(this, arguments)
-              window.dispatchEvent(new Event("locationchange"))
-              return ret
-            }
-            history.replaceState = function () {
-              const ret = originalReplace.apply(this, arguments)
-              window.dispatchEvent(new Event("locationchange"))
-              return ret
-            }
-            window.addEventListener("popstate", function () {
-              window.dispatchEvent(new Event("locationchange"))
-            })
-            window.addEventListener("locationchange", function () {
-              // 微延时，让框架先渲染 DOM
-              setTimeout(findAndProcess, 150)
-            })
-          } catch (err) {
-          }
-        })()
+        window.addEventListener("locationchange", () => {
+          removed = false
+          setTimeout(findAndRemoveGPU, 150)
+        })
 
-        // 4) 额外的轮询保险（如果 MutationObserver 未捕获到）
-        const maxTries = 30
         let tries = 0
         const intervalId = setInterval(() => {
           tries++
-          if (findAndProcess() || tries >= maxTries) {
+          if (findAndRemoveGPU() || tries >= 20) {
             clearInterval(intervalId)
-            if (tries >= maxTries) {
-              console.info(TAG, "达到轮询上限，停止轮询。")
+          }
+        }, 500)
+
+        console.info(TAG, '脚本注入完成：正在监听 DOM 变化与路由')
+      })();
+    </script>
+    <script>
+      ;(function() {
+        const IMG_SRC = "https://easyimage.mikus.ink/i/u/2026/01/16/12o9iot.webp"
+        let imgAdded = false
+
+        function findServerHeader() {
+          const mainContent = document.querySelector('main') || document.body
+          const sections = mainContent.querySelectorAll('section')
+          for (const section of sections) {
+            if (section.querySelector('h1, h2, h3')) {
+              return section
             }
           }
-        }, 500);
-
-        // 调试提示
-  console.info('[remove-gpu-if-present] 脚本注入完成：正在监听 DOM 变化与路由，若匹配到包含 "GPU" 的 <p>，将删除指定容器。');
-})();
-(function() {
-    var originalPushState = history.pushState;
-    var originalReplaceState = history.replaceState;
-
-    history.pushState = function() {
-        var result = originalPushState.apply(this, arguments);
-        window.dispatchEvent(new Event('locationchange'));
-        return result;
-    };
-
-    history.replaceState = function() {
-        var result = originalReplaceState.apply(this, arguments);
-        window.dispatchEvent(new Event('locationchange'));
-        return result;
-    };
-
-    window.addEventListener('popstate', function() {
-        window.dispatchEvent(new Event('locationchange'));
-    });
-
-    function addImageObserver() {
-        var observer = new MutationObserver(function(mutationsList, observer) {
-            var xpath = "/html/body/div/div/main/div[2]/section[1]/div[4]/div";
-            var container = document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-
-            if (container) {
-                observer.disconnect();
-                var existingImg = container.querySelector("img");
-                if (existingImg) {
-                    container.removeChild(existingImg);
-                }
-                var imgElement = document.createElement("img");
-                imgElement.src = "https://easyimage.mikus.ink/i/u/2026/01/16/12o9iot.webp";
-                imgElement.style.position = "absolute";
-                imgElement.style.right = "8px";
-                imgElement.style.top = "-80px";
-                imgElement.style.zIndex = "10";
-                imgElement.style.width = "90px";
-                container.appendChild(imgElement);
-            }
-        });
-        var config = { childList: true, subtree: true };
-        observer.observe(document.body, config);
-    }
-
-    window.addEventListener('locationchange', function() {
-        addImageObserver();
-    });
-
-    addImageObserver();
-})();
-    window.CustomBackgroundImage = 'https://random.mikus.ink';
-    window.CustomMobileBackgroundImage = 'https://random.mikus.ink';
-    window.ShowNetTransfer = false;
-    window.FixedTopServerName = true;
-    window.CustomDesc = 'Ciallo～(∠・ω< )⌒☆';
-    var link = document.createElement('link');
-    link.rel = 'stylesheet';
-    document.head.appendChild(link);
-    link.href = 'https://font.sec.miui.com/font/css?family=MiSans:400,700:MiSans'; // MiSans
-    /* 左侧哪吒文本 */
-    const observerFooterLeft = new MutationObserver(() => {
-        const footerLeft = document.querySelector('.server-footer-name > div:first-child');
-        if (footerLeft) {
-             footerLeft.innerHTML = 'Powered by <a href="https://github.com/nezhahq/nezha" target="_blank">NeZha</a>';
-             footerLeft.style.visibility = 'hidden'; // 隐藏
-            observerFooterLeft.disconnect();
+          return null
         }
-    });
-    observerFooterLeft.observe(document.body, { childList: true, subtree: true });
-    /* 右侧主题文本 */
-    const observerFooterRight = new MutationObserver(() => {
-        const footerRight = document.querySelector('.server-footer-theme');
-        if (footerRight) {
-            footerRight.innerHTML = '<section>Powered by <a href="https://github.com/nezhahq/nezha" target="_blank">NeZha</a></section>';
-            footerRight.style.visibility = 'hidden'; // 隐藏
-            observerFooterRight.disconnect();
+
+        function addImage() {
+          if (imgAdded) return true
+          try {
+            const section = findServerHeader()
+            if (!section) return false
+            const container = section.querySelector('div[class*="relative"]') || section.querySelector('div:last-child')
+            if (!container) return false
+
+            const existingImg = container.querySelector("img.custom-decor-img")
+            if (existingImg) return true
+
+            const imgElement = document.createElement("img")
+            imgElement.src = IMG_SRC
+            imgElement.className = "custom-decor-img"
+            imgElement.style.cssText = "position:absolute;right:8px;top:-80px;z-index:10;width:90px"
+            container.appendChild(imgElement)
+            imgAdded = true
+            return true
+          } catch (err) {
+            return false
+          }
         }
-    });
-    observerFooterRight.observe(document.body, { childList: true, subtree: true });
-</script>
+
+        const observer = new MutationObserver(() => {
+          if (addImage()) {
+            observer.disconnect()
+          }
+        })
+        observer.observe(document.body, { childList: true, subtree: true })
+
+        window.addEventListener('locationchange', () => {
+          imgAdded = false
+          setTimeout(addImage, 150)
+        })
+
+        addImage()
+      })();
+    </script>
+    <script>
+      window.CustomBackgroundImage = 'https://random.mikus.ink';
+      window.CustomMobileBackgroundImage = 'https://random.mikus.ink';
+      window.ShowNetTransfer = false;
+      window.FixedTopServerName = true;
+      window.CustomDesc = 'Ciallo～(∠・ω< )⌒☆';
+      var link = document.createElement('link');
+      link.rel = 'stylesheet';
+      document.head.appendChild(link);
+      link.href = 'https://font.sec.miui.com/font/css?family=MiSans:400,700:MiSans';
+
+      ;(function() {
+        let hidden = false
+        const footerObserver = new MutationObserver(() => {
+          if (hidden) return
+          const footerLeft = document.querySelector('.server-footer-name > div:first-child')
+          const footerRight = document.querySelector('.server-footer-theme')
+          if (footerLeft && footerRight) {
+            footerLeft.style.visibility = 'hidden'
+            footerRight.style.visibility = 'hidden'
+            hidden = true
+            footerObserver.disconnect()
+          }
+        })
+        footerObserver.observe(document.body, { childList: true, subtree: true })
+      })();
+    </script>
 <style>
     * {
         font-family: 'MiSans';
