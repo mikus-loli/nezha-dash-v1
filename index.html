@@ -180,6 +180,25 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      ;(function() {
+        const originalPushState = history.pushState
+        const originalReplaceState = history.replaceState
+        history.pushState = function() {
+          const ret = originalPushState.apply(this, arguments)
+          window.dispatchEvent(new Event('locationchange'))
+          return ret
+        }
+        history.replaceState = function() {
+          const ret = originalReplaceState.apply(this, arguments)
+          window.dispatchEvent(new Event('locationchange'))
+          return ret
+        }
+        window.addEventListener('popstate', () => {
+          window.dispatchEvent(new Event('locationchange'))
+        })
+      })();
+    </script>
+    <script>
       // 移除GPU卡片
       ;(function () {
         "use strict"
